@@ -42,6 +42,9 @@ import com.mlr_apps.objectdetection.YuvToRgbConverter
 import com.mlr_apps.objectdetection.ui.theme.ObjectDetectionTheme
 import org.tensorflow.lite.Interpreter
 import java.util.concurrent.ExecutorService
+import android.speech.tts.TextToSpeech
+import com.mlr_apps.objectdetection.Data.DetectionObject
+
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -49,7 +52,8 @@ fun DetectionScreen(
     cameraExecutor: ExecutorService,
     yuvToRgbConverter: YuvToRgbConverter,
     interpreter: Interpreter,
-    labels: List<String>
+    labels: List<String>,
+    textToSpeech: TextToSpeech // Nhận TextToSpeech từ MainActivity
 ) {
     ObjectDetectionTheme {
         Surface(
@@ -61,7 +65,7 @@ fun DetectionScreen(
             Column {
                 TopBar()
                 if (cameraPermissionState.status.isGranted){
-                    OpenCamera(cameraExecutor, yuvToRgbConverter, interpreter, labels)
+                    OpenCamera(cameraExecutor, yuvToRgbConverter, interpreter, labels, textToSpeech = textToSpeech) // Truyền MainActivity vào OpenCamera)
                 }else{
                     Permission(cameraPermissionState)
                 }
@@ -96,7 +100,8 @@ fun OpenCamera(
     cameraExecutor: ExecutorService,
     yuvToRgbConverter: YuvToRgbConverter,
     interpreter: Interpreter,
-    labels: List<String>
+    labels: List<String>,
+    textToSpeech: TextToSpeech // Nhận TextToSpeech
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -108,7 +113,8 @@ fun OpenCamera(
             cameraExecutor = cameraExecutor,
             yuvToRgbConverter = yuvToRgbConverter,
             interpreter = interpreter,
-            labels = labels
+            labels = labels,
+            textToSpeech = textToSpeech // Truyền TextToSpeech vào CameraPreview
         )
     }
 }
@@ -121,7 +127,8 @@ fun CameraPreview(
     yuvToRgbConverter: YuvToRgbConverter,
     interpreter: Interpreter,
     labels: List<String>,
-    viewModel: DetectionViewModel = hiltViewModel()
+    viewModel: DetectionViewModel = hiltViewModel(),
+    textToSpeech: TextToSpeech // Nhận TextToSpeech từ OpenCamera
 ) {
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     var imageCapture: ImageCapture? by remember { mutableStateOf(null) }
@@ -153,7 +160,7 @@ fun CameraPreview(
             factory = { ctx ->
                 val previewView = PreviewView(ctx)
                 cameraProviderFuture.addListener({
-
+                    var previousDetectedObjects: List<String> = emptyList()
                     val imageAnalyzer = ImageAnalysis.Builder()
                         .setTargetRotation(android.view.Surface.ROTATION_0)
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -168,10 +175,31 @@ fun CameraPreview(
                                     resultViewSize = Size(sizeWith.toInt(), sizeHeight.toInt()
                                     )
                                 ) { detectedObjectList ->
+                                    // So sánh danh sách đối tượng hiện tại với danh sách trước đó
+                                    var check: Boolean = detectedObjectList.map { it.label } == previousDetectedObjects
+                                    Log.d ("Check", "Check: ${check}")
+                                    if (detectedObjectList.isNotEmpty() && !check) {
+
+                                        // Cập nhật danh sách đối tượng đã phát hiện
+                                        Log.d("ObjectDetection", "Previous Detected Objects: ${previousDetectedObjects}")
+
+                                        previousDetectedObjects = detectedObjectList.map { it.label }
+                                        Log.d("ObjectDetection", "Detected Objects: ${previousDetectedObjects}")
+
+                                        // Đọc nhãn của đối tượng đầu tiên (hoặc tất cả các đối tượng nếu muốn)
+                                        detectedObjectList.firstOrNull()?.let { detectedObject ->
+                                            textToSpeech.speak(
+                                                detectedObject.label,
+                                                TextToSpeech.QUEUE_FLUSH,
+                                                null,
+                                                null
+                                            )
+                                        }
+                                    }
                                     viewModel.setList(detectedObjectList)
                                 }
                             )
-                        }
+                            }
 
                     imageCapture = ImageCapture.Builder()
                         .setTargetRotation(previewView.display.rotation)

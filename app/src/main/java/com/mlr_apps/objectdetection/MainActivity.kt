@@ -2,6 +2,8 @@ package com.mlr_apps.objectdetection
 
 import android.content.res.AssetFileDescriptor
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,11 +26,15 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
+    private lateinit var textToSpeech: TextToSpeech
     //------------------------  onCreate ----------------------------------
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Khởi tạo TextToSpeech
+        textToSpeech = TextToSpeech(this, this)
+
         setContent {
             val systemUiController = rememberSystemUiController()
             val navController = rememberNavController()
@@ -49,7 +55,8 @@ class MainActivity : ComponentActivity() {
                        cameraExecutor = cameraExecutor,
                        yuvToRgbConverter = yuvToRgbConverter,
                        interpreter = interpreter,
-                       labels = labels
+                       labels = labels,
+                       textToSpeech = textToSpeech
                    )
                }
             }
@@ -57,9 +64,25 @@ class MainActivity : ComponentActivity() {
     }
     //------------------------Fin  onCreate --------------------------------
 
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            // Thiết lập ngôn ngữ (US English)
+            val result = textToSpeech.setLanguage(Locale.US)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Toast.makeText(this, "Ngôn ngữ không hỗ trợ", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(this, "Khởi tạo TTS thất bại", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+        if (::textToSpeech.isInitialized) {
+            textToSpeech.stop()
+            textToSpeech.shutdown()
+        }
     }
 
     //-----------------------------------------------------------------------
@@ -113,6 +136,11 @@ class MainActivity : ComponentActivity() {
             inputStream?.close()
         }
         return labels
+    }
+
+    // Hàm để đọc văn bản
+    fun speakText(text: String) {
+        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 }
 
